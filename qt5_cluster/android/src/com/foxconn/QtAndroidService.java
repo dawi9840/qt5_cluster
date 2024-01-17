@@ -378,6 +378,10 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
         qmlHazardLight = SpecificSignalDatasetForQML.testGetSpecificSignal(0, 6);          //Warning_Light_HAZARD
         qmlStatusLightOn = SpecificSignalDatasetForQML.testGetLightStatus(0);              // Opened
         qmlStatusLightOff = SpecificSignalDatasetForQML.testGetLightStatus(1);             // Closed
+
+        // turn on parking light
+        invokeSendToQtSignalChange(qmlLowBeamLight, qmlStatusLightOn);
+        invokeSendToQtSignalChange(qmlHighBeamLight, qmlStatusLightOff);
     }
 
     // 用於處理 Can Server 的連接和斷開
@@ -648,12 +652,16 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
                                                             String hazardLightStatus){
         // Using hexValueStatus to send command to QML.
         if(leftDirectionLightStatus.equals(statusLedOn)){
+            invokeSendToQtSignalChange(qmlRightDirectionLight, qmlStatusLightOff);
             invokeSendToQtSignalChange(qmlLeftDirectionLight, qmlStatusLightOn);
             Log.d(TAG, qmlLeftDirectionLight + " is " + qmlStatusLightOn + "!");
         }else if(rightDirectionLightStatus.equals(statusLedOn)){
+            invokeSendToQtSignalChange(qmlLeftDirectionLight, qmlStatusLightOff);
             invokeSendToQtSignalChange(qmlRightDirectionLight, qmlStatusLightOn);
             Log.d(TAG, qmlRightDirectionLight + " is " + qmlStatusLightOn + "!");
         }else if(hazardLightStatus.equals(statusLedOn)){
+            invokeSendToQtSignalChange(qmlLeftDirectionLight, qmlStatusLightOff);
+            invokeSendToQtSignalChange(qmlRightDirectionLight, qmlStatusLightOff);
             invokeSendToQtSignalChange(qmlHazardLight, qmlStatusLightOn);
             Log.d(TAG, qmlHazardLight + " is " + qmlStatusLightOn + "!\n");
         }else{
@@ -666,12 +674,15 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
     private static void sendLowAndHighBeamLightsToQML(String lowBeanLightStatus,
                                                        String highBeanLightStatus){
         if(lowBeanLightStatus.equals(statusLightOn)) {
+            invokeSendToQtSignalChange(qmlHighBeamLight, qmlStatusLightOff);//0117add
             invokeSendToQtSignalChange(qmlLowBeamLight, qmlStatusLightOn);
             Log.d(TAG, qmlLowBeamLight + " is " + qmlStatusLightOn + "!");
         }else if(highBeanLightStatus.equals(statusLightOn)) {
+            invokeSendToQtSignalChange(qmlLowBeamLight, qmlStatusLightOn); //0117add
             invokeSendToQtSignalChange(qmlHighBeamLight, qmlStatusLightOn);
             Log.d(TAG, qmlHighBeamLight + " is " + qmlStatusLightOn + "!");
         }else{
+            invokeSendToQtSignalChange(qmlLowBeamLight, qmlStatusLightOn); //0117add
             invokeSendToQtSignalChange(qmlHighBeamLight, qmlStatusLightOff);
             Log.d(TAG, "Both " + qmlLowBeamLight + " and " + qmlHighBeamLight + " are " + qmlStatusLightOff + "!\n");
         }
@@ -1355,4 +1366,3 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
     }
     /**************************************************************/
 }
-
