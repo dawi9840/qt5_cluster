@@ -922,14 +922,14 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
             // 通過 iDriverAidlInterface 調用 getDriverData 方法，獲取駕駛員數據
             iDriverAidlInterface = IDriverAidlInterface.Stub.asInterface(iBinder);
 
-            try {
+//            try {
 //                String speedLimit = iDriverAidlInterface.getDriverData("SpeedLimiting");
 //                String passengerAirbagSwitch = iDriverAidlInterface.getDriverData("PACOS");/*Passenger Airbag Cut Off Switch */
 //                setSpeedLimit(speedLimit);
 //                setPACOS(passengerAirbagSwitch);
-            } catch (RemoteException e) {
-                e.printStackTrace();
-            }
+//            } catch (RemoteException e) {
+//                e.printStackTrace();
+//            }
 
             try {
                 Log.d(TAG, "DriverService registerCallback");
