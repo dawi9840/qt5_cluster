@@ -104,19 +104,19 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
         @Override
         public void onItemChangeCallback(String item) throws RemoteException {
             // 這個回調處理不同類型的駕駛員數據變化
-            Log.i(TAG, "OnDriverCallback, item = " + item);
-            if (item.equals("All")) {
-                String speedLimit = iDriverAidlInterface.getDriverData("SpeedLimiting");
-                String passengerAirbagSwitch = iDriverAidlInterface.getDriverData("PACOS");/*Passenger Airbag Cut Off Switch */
-                setSpeedLimit(speedLimit);
-                setPACOS(passengerAirbagSwitch);
-            } else if (item.equals("SpeedLimiting")) {
-                String speedLimit = iDriverAidlInterface.getDriverData("SpeedLimiting");
-                setSpeedLimit(speedLimit);
-            } else if (item.equals("PACOS")) {
-                String passengerAirbagSwitch = iDriverAidlInterface.getDriverData("PACOS");/*Passenger Airbag Cut Off Switch */
-                setPACOS(passengerAirbagSwitch);
-            }
+//            Log.i(TAG, "OnDriverCallback, item = " + item);
+//            if (item.equals("All")) {
+//                String speedLimit = iDriverAidlInterface.getDriverData("SpeedLimiting");
+//                String passengerAirbagSwitch = iDriverAidlInterface.getDriverData("PACOS");/*Passenger Airbag Cut Off Switch */
+//                setSpeedLimit(speedLimit);
+//                setPACOS(passengerAirbagSwitch);
+//            } else if (item.equals("SpeedLimiting")) {
+//                String speedLimit = iDriverAidlInterface.getDriverData("SpeedLimiting");
+//                setSpeedLimit(speedLimit);
+//            } else if (item.equals("PACOS")) {
+//                String passengerAirbagSwitch = iDriverAidlInterface.getDriverData("PACOS");/*Passenger Airbag Cut Off Switch */
+//                setPACOS(passengerAirbagSwitch);
+//            }
         }
 
         @Override
@@ -171,18 +171,18 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
     private static String startBitRightDirection;
     private static String startBitHazard;
 
-//    private static String canID403;
-//    private static String startBitSoc;
-//    private static String startBitDrivingMileage;
-//    private static String lengthSoc;
-//    private static String lengthDrivingMileage;
-//    private static String strSocValues;
-//    private static String strDmValues;
-//    private static String unit;
-//    private static double factor;
-//    private static double maximum;
-//    private static double minimum;
-//    private static int offset;
+    private static String canID403;
+    private static String startBitSoc;
+    private static String startBitDrivingMileage;
+    private static String lengthSoc;
+    private static String lengthDrivingMileage;
+    private static String strSocValues;
+    private static String strDmValues;
+    private static String unit;
+    private static double factor;
+    private static double maximum;
+    private static double minimum;
+    private static int offset;
 
     private static String statusLightOn;
     private static String statusLightOff;
@@ -219,9 +219,8 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
         //testJavaSendValueToQML(3);
 
         // dawi_main
-        String receiveData = "54 02 01 07 00 00 04 00 00 00 00 00;54 02 01 05 00 00 00 00 00 08 00 00;54 04 02 07 00 10 00 00 00 00 00 00;54 01 09 09 00 00 04 00 00 00 00 00;54 04 00 0a 00 00 00 3F 00 00 00 00;54 03 02 02 00 00 00 00 0D 60 00 00;54 04 00 03 00 00 00 00 C8 00 00 00;54 04 00 03 00 00 C5 00 00 00 00 00;";
-        //String receiveData = "54 04 02 07 00 10 00 00 00 00 00 00;";
-        processReceivedCanSignals(receiveData);
+//        String receiveData = "54 02 01 07 00 00 04 00 00 00 00 00;54 02 01 05 00 00 00 00 00 08 00 00;54 04 02 07 00 10 00 00 00 00 00 00;54 01 09 09 00 00 04 00 00 00 00 00;54 04 00 0a 00 00 00 3F 00 00 00 00;54 03 02 02 00 00 00 00 0D 60 00 00;54 04 00 03 00 00 00 00 C8 00 00 00;54 04 00 03 00 00 C5 00 00 00 00 00;54 07 00 00 05 00 04 00 00 00 00 00;";
+//        processReceivedCanSignals(receiveData);
     }
 
     // Test case for Java sending the value to display on QML.
@@ -336,21 +335,21 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
         idSoc = canIdSignalsTable_[13];            // "0x403, 23, 8",  // 13.Battery level SOC
         idDrivingMileage = canIdSignalsTable_[14]; // "0x403, 25, 10", // 14.Driving mileage
 
-//        canID403 = "0x403";
-//        String[] socSpecificIDParts = idSoc.split(", ");
-//        String[] dmSpecificIDParts = idDrivingMileage.split(", ");
-//        startBitSoc = socSpecificIDParts[1];           // 23
-//        startBitDrivingMileage = dmSpecificIDParts[1]; // 25
-//        lengthSoc = socSpecificIDParts[2];             // 8
-//        lengthDrivingMileage = dmSpecificIDParts[2];   // 10
+        canID403 = "0x403";
+        String[] socSpecificIDParts = idSoc.split(", ");
+        String[] dmSpecificIDParts = idDrivingMileage.split(", ");
+        startBitSoc = socSpecificIDParts[1];           // 23
+        startBitDrivingMileage = dmSpecificIDParts[1]; // 25
+        lengthSoc = socSpecificIDParts[2];             // 8
+        lengthDrivingMileage = dmSpecificIDParts[2];   // 10
 
-//        strSocValues = "";
-//        strDmValues = "";
-//        unit = "";
-//        factor = 0;
-//        maximum = 0;
-//        minimum = 0;
-//        offset = 0;
+        strSocValues = "";
+        strDmValues = "";
+        unit = "";
+        factor = 0;
+        maximum = 0;
+        minimum = 0;
+        offset = 0;
 
         idFrontFog = canIdSignalsTable_[2];        // "0x215, 43, 1",  // 2.Front fog lamp (on/off)
         idRearFog = canIdSignalsTable_[5];         // "0x217, 41, 1",  // 5.Rear fog light (on/off)
@@ -430,8 +429,8 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
         String leftDirectionLightStatus = "";
         String rightDirectionLightStatus = "";
         String hazardLightStatus = "";
-//        String socStatus = "";
-//        String drivingMileageStatus = "";
+        String socStatus = "";
+        String drivingMileageStatus = "";
         String[] dataSets = aString.split(";");
 
         for (String dataSet : dataSets) {
@@ -452,7 +451,7 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
 
                     String hexValue = SignalCANInfo.getHexValue(canIdSignalsTable_[i], signalData);
 
-                    /*if(socAndtDrivingMileageCondition(signalData, myCanID, myStartBit)){
+                    if(socAndtDrivingMileageCondition(signalData, myCanID, myStartBit)){
                         // Log.d(TAG,( i + "0x403_(myCanID, myStartBit): (" + myCanID + ", " + myStartBit + ")");
 
                         if(myStartBit.equals(startBitSoc) && myLength.equals(lengthSoc)){
@@ -489,8 +488,7 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
                             Log.d(TAG, "SOC and DM status exception");
                         }
 
-                    }else if(LeftAndRightDirectionAndHazardCondition(signalData, myCanID, myStartBit)){*/
-                    if(LeftAndRightDirectionAndHazardCondition(signalData, myCanID, myStartBit)){
+                    }else if(LeftAndRightDirectionAndHazardCondition(signalData, myCanID, myStartBit)){
                         // Log.d(TAG,  i + "0x427_(myCanID, myStartBit): (" + myCanID + ", " + myStartBit + ")");
 
                         // Caculate hexValueStatus of low/hight direction, and hazard light status.
@@ -627,9 +625,9 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
     }
 
     private static boolean socAndtDrivingMileageCondition(String[] signalData, String myCanID, String myStartBit){
-//        return signalData[1].equals(canID403) &&
-//                ((myCanID.equals(canID403) && myStartBit.equals(startBitSoc)) ||
-//                (myCanID.equals(canID403) && myStartBit.equals(startBitDrivingMileage)));
+        return signalData[1].equals(canID403) &&
+                ((myCanID.equals(canID403) && myStartBit.equals(startBitSoc)) ||
+                (myCanID.equals(canID403) && myStartBit.equals(startBitDrivingMileage)));
     }
 
     private static boolean lowBeamAndHighBeamLightsCondition(String[] signalData, String myCanID, String myStartBit){
@@ -746,6 +744,9 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
         Log.d(TAG, "separateVehicleStatusSignals start");
         String strOduValues = "";
         String strSpeedValues = "";
+        int initValue = 0;
+
+/*
         String strSocValues = "";
         String strDmValues = "";
 
@@ -754,7 +755,7 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
         int maximum = 0;
         int minimum = 0;
         int offset = 0;
-        int initValue = 0;
+*/
 
         Log.d(TAG, "dawi_separateVehicleStatusSignals-------------");
         // Log.d(TAG, "Input specificID: " + specificID);
@@ -807,7 +808,7 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
                 invokeSendingSpeedValueToQt(strSpeedValues);
             }
         }
-
+/*
         // 13.Battery level SOC
         if(specificID.equals(idSoc) &&
            !hexValueStatus.equals(statusLightOn) && !hexValueStatus.equals(statusLightOff) &&
@@ -823,7 +824,7 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
             minimum = 0;
             unit = " %";
             int socValues = (int)Math.round(SignalCANInfo.convertHexValueToDecimalValue(hexValue)*factor);
-            if(socValues>=minimum && socValues<=maximum){
+            if(socValues>minimum && socValues<=maximum){
                 strSocValues = String.valueOf(socValues);
                 Log.d(TAG, "dawi_java_SOC: " + strSocValues + unit);
                 invokeSendingSocValueToQt(strSocValues);
@@ -851,7 +852,7 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
                 invokeSendingdrivingMileageValueToQt(strDmValues);
             }
         }
-
+*/
         if(!strOduValues.equals("") && !strSpeedValues.equals("") &&
            !strSocValues.equals("") && !strDmValues.equals("")){
             Log.d(TAG, "Input specificID: " + specificID);
@@ -922,10 +923,10 @@ public class QtAndroidService extends Service implements MediaPlaybackHandler.Me
             iDriverAidlInterface = IDriverAidlInterface.Stub.asInterface(iBinder);
 
             try {
-                String speedLimit = iDriverAidlInterface.getDriverData("SpeedLimiting");
-                String passengerAirbagSwitch = iDriverAidlInterface.getDriverData("PACOS");/*Passenger Airbag Cut Off Switch */
-                setSpeedLimit(speedLimit);
-                setPACOS(passengerAirbagSwitch);
+//                String speedLimit = iDriverAidlInterface.getDriverData("SpeedLimiting");
+//                String passengerAirbagSwitch = iDriverAidlInterface.getDriverData("PACOS");/*Passenger Airbag Cut Off Switch */
+//                setSpeedLimit(speedLimit);
+//                setPACOS(passengerAirbagSwitch);
             } catch (RemoteException e) {
                 e.printStackTrace();
             }
