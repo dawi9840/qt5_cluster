@@ -1,0 +1,864 @@
+package com.foxconn;
+
+// 導入的 Android 相關庫
+import android.content.Context;
+import android.content.ComponentName;
+import android.content.Intent;
+import android.util.Log;
+import android.app.Service;
+import android.os.IBinder;
+import android.os.Bundle;
+
+// 用於與其他 Android 服務進行綁定的庫
+import com.fxc.libCanWrapperNDK.IMyAidlInterface2;
+import com.fxc.libCanWrapperNDK.ICanStCallback;
+import android.os.RemoteException;
+import android.content.ServiceConnection;
+
+// 導入其他自定義的庫
+import android.net.Uri;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.content.IntentFilter;
+import android.content.BroadcastReceiver;
+import android.car.Car;
+import android.car.media.CarAudioManager;
+import android.text.TextUtils;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import com.fxc.ev.util.SystemPropUtil;
+
+// 導入 Driver profile 相關庫
+import com.fxc.ev.driverprofile.IDriverAidlInterface;
+import com.fxc.ev.driverprofile.IDriverCallback;
+
+// 導入 Radio 相關庫
+import android.hardware.radio.ProgramSelector;
+import android.hardware.radio.RadioManager;
+import android.hardware.radio.RadioMetadata;
+import com.android.car.broadcastradio.support.Program;
+import com.android.car.broadcastradio.support.platform.ProgramInfoExt;
+import com.android.car.broadcastradio.support.platform.ProgramSelectorExt;
+
+//import lookup CAN ID 相關庫
+import com.foxconn.util.SignalCANInfo;
+import com.foxconn.util.HexValueLookup;
+import com.foxconn.util.SpecificCanIdDataset;
+import com.foxconn.util.SignalReceiver;
+import java.util.Queue;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+public class QtAndroidService extends Service implements
+        MediaPlaybackHandler.MediaPlaybackCallback{
+    private static final String TAG = "QtAndroidService";
+
+//    // Native methods for sending different types of messages to Qt
+    private static native void sendToQt(String message);
+/***
+    // 用於向 Qt 發送音樂信息的本機方法
+    private static native void sendToQtMediaInfo(String titleInfo, String artistInfo, String albumInfo, String durationInfo);
+
+    // 用於向 Qt 發送當前音樂播放位置的本機方法
+    private static native void sendToQtMediaCurrPos(int pos);
+
+    // 用於向 Qt 發送信號變更的本機方法
+    private static native void sendToQtSignalChange(String iconID, String iconStatus);
+
+    // 用於向 Qt 發送音樂封面圖片路徑的本機方法
+    private static native void sendToQtThumb(String thumbPath);
+
+    // 用於向 Qt 發送清理音樂信息的本機方法
+    private static native void sendToQtCleanMedia();
+
+    // 用於向 Qt 發送音樂音量信息的本機方法
+    private static native void sendToQtMusicVolume(int currVolume,int maxVolume,int minVolume);
+
+    // 用於向 Qt 發送行車模式變更的本機方法
+    private static native void sendToQtDriverMode(String mode);
+
+    //  用於向 Qt 發送按鍵代碼的本機方法
+    private static native void sendToQtKeyCode(String keycode);
+
+    // 用於向 Qt 發送 Kneo 使用者 ID 的本機方法
+    private static native void sendToQtKneoUserID(String userName);
+
+    // 用於向 Qt 發送旅程卡信息的本機方法
+    private static native void sendTripCards(String odometer,String tripCardOne,String tripCardTwo);
+
+    // 用於向 Qt 發送電台信息的本機方法
+    private static native void sendRadioInfo(int curridx,String currTitle,String currFreq, boolean updateList,String radiolist);
+
+    // 用於向 Qt 發送限速模式信息的本機方法
+    private static native void sendLimitSpeed(boolean limitStatus,int speedValue);
+
+    // 用於向 Qt 發送安全氣囊信息(Pacos)的本機方法
+    private static native void sendPacosStatus(boolean status);
+
+    // 用於向 Qt 發送充電模式狀態的本機方法
+    private static native void sendChargeModeStatus(String mode);
+*/
+    private final boolean TEST_DEBUG = true;/*測試數據*/
+    private boolean currentReset = false;
+    private boolean lastChargeReset = false;
+    private boolean tripAReset = false;
+    private boolean tripBReset = false;
+    private IMyAidlInterface2 iMyAidlInterface2;
+    private IDriverAidlInterface iDriverAidlInterface;
+    private MediaPlaybackHandler mediaPlaybackHandler;
+
+    // 定義一個 IDriverCallback 來處理駕駛員數據的回調
+    private IDriverCallback driverCallback = new IDriverCallback() {
+        @Override
+        public void onItemChangeCallback(String item) throws RemoteException {
+            // 這個回調處理不同類型的駕駛員數據變化
+            Log.i(TAG, "OnDriverCallback, item = " + item);
+            if (item.equals("All")) {
+                String speedLimit = iDriverAidlInterface.getDriverData("SpeedLimiting");
+                String passengerAirbagSwitch = iDriverAidlInterface.getDriverData("PACOS");/*Passenger Airbag Cut Off Switch */
+                setSpeedLimit(speedLimit);
+                setPACOS(passengerAirbagSwitch);
+            } else if (item.equals("SpeedLimiting")) {
+                String speedLimit = iDriverAidlInterface.getDriverData("SpeedLimiting");
+                setSpeedLimit(speedLimit);
+            } else if (item.equals("PACOS")) {
+                String passengerAirbagSwitch = iDriverAidlInterface.getDriverData("PACOS");/*Passenger Airbag Cut Off Switch */
+                setPACOS(passengerAirbagSwitch);
+            }
+        }
+
+        @Override
+        public IBinder asBinder() {
+            return null;
+        }
+    };
+
+    private CarAudioManager mCarAudioManager = null;
+    private Car mCar;
+
+    serviceStartBroadcastReceiver mBroadcastReceiver = new serviceStartBroadcastReceiver();
+
+    // ... 其他廣播操作 ...
+    /*行車模式廣播*/
+    private static final String DRIVER_MODE_CHANGE_ACTION = "ivi.broadcast.action.DRIVER_MODE";
+    private static final String DPAD_KEYEVENT = "ivi.broadcast.action.KeyEvent";/*接收鍵盤按鍵廣播*/
+    private static final String KNEO_FACE_UNLOCK = "user_name_change";/*接收耐能解鎖成功廣播*/
+
+    /*旅程模式切換廣播*/
+    private static final String TRIP_MODE_CHANGE_ACTION = "broadcast.fxc.action.tripcardchange";/*接收CSD更改旅程模式*/
+
+    /*旅程數值Reset廣播*/
+    private static final String TRIP_MODE_RESETVALUE_ACTION = "broadcast.fxc.action.valuereset";/*接收CSD更改旅程模式*/
+
+    /*接收CSD電台列表與當前播放電台*/
+    private static final String EV_RADIO_PROGRAMS = "com.fxc.ev.radio.programs";
+
+    /*限速模式ON/OFF*/
+    private static final String SPEED_LIMIT_ACTION = "com.fxc.ev.speedlimit.status";/*限速模式廣播通知啟動or關閉*/
+
+    /*充電狀態廣播*/
+    private static final String CHARGE_MODE_CHANGE = "com.fxc.ev.broadcast.chargestatus";/*充電模式狀態*/
+
+    /*Define receive CAN series signals mode and table.*/
+    private int selectMode = 3; // [3]: telltale and vehicle status.
+    private String[] canIdSignalsTable;
+    private String[][] hexValueTable;
+    private Map<String, String[]> correspondingTable;
+
+    private volatile boolean sendingSignals = false;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        Log.i(TAG, "onCreate");
+//        initCanService();
+/**
+//        initSpecificCanSeriesTable(); // dawi add
+//        initMediaPlaybackHandler();   // dawi add
+//        initDriverService();
+//        regBrocastReceiver();
+//        setCarAudioService();
+//        setTripInfo();*/
+        startSendingSignalsToQt(); // Initiate an operation that sends a signal onCreate()
+    }
+
+    // 用於設置 Car Audio 服務
+    private void setCarAudioService() {
+        Log.i(TAG, "setCarAudioService");
+        mCar = Car.createCar(this);
+        mCarAudioManager = (CarAudioManager) mCar.getCarManager(Car.AUDIO_SERVICE);
+        if(mCarAudioManager != null) {
+            Log.i(TAG, "registerCarVolumeCallback");
+            mCarAudioManager.registerCarVolumeCallback(mCarVolumeCallback);
+        } else {
+            Log.i(TAG, "mCarAudioManager == null");
+        }
+    }
+
+    private CarAudioManager.CarVolumeCallback mCarVolumeCallback = new CarAudioManager.CarVolumeCallback(){
+        @Override
+        public void onGroupVolumeChanged(int zoneId, int groupId, int flags) {
+            super.onGroupVolumeChanged(zoneId, groupId, flags);
+            int maxvolume = mCarAudioManager.getGroupMaxVolume(zoneId,groupId);
+            int minVolume = mCarAudioManager.getGroupMinVolume(zoneId,groupId);
+            int currVolume = mCarAudioManager.getGroupVolume(zoneId,groupId);
+            Log.i(TAG, "GroupMaxVolume = " + maxvolume);
+            Log.i(TAG, "GroupMinVolume = " + minVolume);
+            Log.i(TAG, "GroupVolume = " + currVolume);
+            //sendToQtMusicVolume(currVolume,maxvolume,minVolume);
+        }
+
+        @Override
+        public void onMasterMuteChanged(int zoneId, int flags) {
+            super.onMasterMuteChanged(zoneId, flags);
+            Log.i(TAG, "onMasterMuteChanged");
+            Log.i(TAG, "zoneId = " + zoneId);
+            Log.i(TAG, "flags = " + flags);
+        }
+    };
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        Log.i(TAG, "Destroying Service");
+        unregisterReceiver(mBroadcastReceiver);
+        stopSendingSignalsToQt(); // Stop sending signals to Qt on destruction
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+
+    private void initCanService(){
+        Log.d(TAG, "initCanService");
+        Intent intent = new Intent();
+        intent.setPackage("com.fxc.libCanWrapperNDK");
+        intent.setAction("com.fxc.libCanWrapperNDK.MyService");
+        bindService(intent, connCanService, Context.BIND_AUTO_CREATE);
+        Log.d(TAG, "bindService");
+    }
+
+    private void initSpecificCanSeriesTable(){
+        Log.d(TAG, "initSpecificCanTables");
+        this.canIdSignalsTable = SpecificCanIdDataset.getSpecificCanIdDatasets(selectMode);
+        this.hexValueTable = HexValueLookup.gethexValueTable(selectMode);
+        this.correspondingTable = HexValueLookup.getCorrespondingTable(canIdSignalsTable, this.hexValueTable, selectMode);
+    }
+
+    // 用於處理 Can Server 的連接和斷開
+    private ServiceConnection connCanService = new ServiceConnection() {
+
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            // Can 服務連接成功時的處理
+            Log.d(TAG, "CanService onServiceConnected");
+            iMyAidlInterface2 = IMyAidlInterface2.Stub.asInterface(iBinder);
+
+            try {
+                Log.d(TAG, "CanService registerCallback");
+                iMyAidlInterface2.registerNotifyCallback(mICanStCallback);
+            } catch (RemoteException e) {
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            // Can 服務斷開連接時的處理
+            try {
+                if(iMyAidlInterface2 != null)
+                    iMyAidlInterface2.unregisterNotifyCallback(mICanStCallback);
+            } catch (RemoteException e) {
+                e.printStackTrace();
+            }
+            iMyAidlInterface2 = null;
+            Log.i(TAG, "CanService iMyAidlInterface2 Disconnected");
+        }
+    };
+
+    // 用於處理 Can Server 的 Callback
+    private ICanStCallback mICanStCallback = new ICanStCallback.Stub() {
+        @Override
+        public void onCallback(String aString) throws RemoteException {
+            Log.d(TAG, "dawi_mICanStCallback: " + aString);
+            //processReceivedCanSignals(aString);
+        }
+    };
+
+    private void processReceivedCanSignals(String aString) {
+        Log.d(TAG, "dawi_processReceivedCanSignals");
+        String[] dataSets = aString.split(";");
+
+        // Record the specific ID that was processed
+        Set<String> processedIDs = new HashSet<>();
+
+        for (String dataSet : dataSets) {
+           String[] signalData = SignalCANInfo.parseSignalData(dataSet);
+           for (String specificID : this.canIdSignalsTable) {
+                // Check if a specific ID has already been processed
+                if (!processedIDs.contains(specificID)) {
+                    String hexValue = SignalCANInfo.getHexValue(specificID, signalData);
+                    if (!hexValue.isEmpty()) {
+                        String hexValueStatus = HexValueLookup.getHexValueStatus(specificID, hexValue, this.correspondingTable);
+                        separateCanSignals(specificID, hexValue, hexValueStatus);
+                    }
+                    // Add processed specific ID to collection
+                    processedIDs.add(specificID);
+                }
+           }
+        }
+    }
+
+    private void separateCanSignals(String specificID, String hexValue, String hexValueStatus) {
+        Log.d(TAG, "dawi_separateCanSignals");
+        //---- telltale status ----//
+        if(specificID == this.canIdSignalsTable[0]){/* Low beam (on/off) */
+            if(hexValue == this.hexValueTable[0][0]){/*0x1=On*/
+                printCanValuesLog("Low beam on", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Off*/
+                printCanValuesLog("Low beam off",specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[1]){/* High beam (on/off) */
+            if(hexValue == this.hexValueTable[0][0]){/*0x1=On*/
+                printCanValuesLog("High beam on", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Off*/
+                printCanValuesLog("High beam Off", specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[2]){/* Front fog lamp (on/off), head and tail are the same*/
+            if(hexValue == this.hexValueTable[0][0]){/*0x1=On*/
+                printCanValuesLog("Front fog lamp on", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Off*/
+                printCanValuesLog("Front fog lamp Off", specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[3]){/* Left direction light (on/off), head and tail are the same */
+            if(hexValue == this.hexValueTable[0][0]){/*0x1=On*/
+                printCanValuesLog("Left direction light on", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Off*/
+                printCanValuesLog("Left direction light off", specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[4]){/* Right direction light (on/off), head and tail are the same */
+            if(hexValue == this.hexValueTable[0][0]){/*0x1=On*/
+                printCanValuesLog("Right direction light on", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Off*/
+                printCanValuesLog("Right direction light off", specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[5]){/* Rear fog light (on/off) */
+            if(hexValue == this.hexValueTable[0][0]){/*0x1=On*/
+                printCanValuesLog("Rear fog light on", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Off*/
+                printCanValuesLog("Rear fog light off", specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[6]){/* Warning light HAZARD (on/off) */
+            if(hexValue == this.hexValueTable[0][0]){/*0x1=On*/
+                printCanValuesLog("HAZARD on", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Off*/
+                printCanValuesLog("HAZARD off", specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        //---- vehicle status ----//
+        if(specificID == this.canIdSignalsTable[7]){/* PRND_P Park light */
+            if(hexValue == this.hexValueTable[1][0]){/*0x3=Switch Fault*/
+                printCanValuesLog("P Switch Fault", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[1][1]){/*0x2=Switch Stuck ON Detected*/
+                printCanValuesLog("P Switch Stuck ON Detected", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[1][2]){/*0x1=Switch Pressed*/
+                printCanValuesLog("P Switch Pressed", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Switch Released*/
+                printCanValuesLog("P Switch Released", specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[8]){/* PRND_R Reverse light */
+            if(hexValue == this.hexValueTable[1][0]){/*0x3=Switch Fault*/
+                printCanValuesLog("R Switch Fault", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[1][1]){/*0x2=Switch Stuck ON Detected*/
+                printCanValuesLog("R witch Stuck ON Detected", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[1][2]){/*0x1=Switch Pressed*/
+                printCanValuesLog("R Switch Pressed", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Switch Released*/
+                printCanValuesLog("R Switch Released", specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[9]){/* PRND_N Neutral light */
+            if(hexValue == this.hexValueTable[1][0]){/*0x3=Switch Fault*/
+                printCanValuesLog("N Switch Fault", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[1][1]){/*0x2=Switch Stuck ON Detected*/
+                printCanValuesLog("N witch Stuck ON Detected", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[1][2]){/*0x1=Switch Pressed*/
+                printCanValuesLog("N Switch Pressed", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Switch Released*/
+                printCanValuesLog("N Switch Released", specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[10]){/* PRND_D Drive light */
+            if(hexValue == this.hexValueTable[1][0]){/*0x3=Switch Fault*/
+                printCanValuesLog("D Switch Fault", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[1][1]){/*0x2=Switch Stuck ON Detected*/
+                printCanValuesLog("D witch Stuck ON Detected", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[1][2]){/*0x1=Switch Pressed*/
+                printCanValuesLog("D Switch Pressed", specificID, hexValue, hexValueStatus);
+            }else{/*0x0=Switch Released*/
+                printCanValuesLog("D Switch Released", specificID, hexValue, hexValueStatus);
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[11]){/* Outdoor temperature */
+            if(hexValue == this.hexValueTable[2][0]){/*0xFF=FF - Signal not available*/
+                printCanValuesLog("Temperature: Signal not available", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[2][1]){/*0xFE=Init*/
+                printCanValuesLog("Temperature: Init", specificID, hexValue, hexValueStatus);
+            }else{/*temperature values*/
+                printCanValuesLog("Temperature: values", specificID, hexValue, hexValueStatus);
+                // E.g., Convert 0x123 to 291.
+                int tempValues = SignalCANInfo.convertHexValueToDecimalValue(hexValue);
+                Log.d(TAG, "tempValues: " + tempValues + " degC\n---------\n");
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[12]){/* Speed */
+            if(hexValue == this.hexValueTable[3][0]){/*0x1FFF=Error*/
+                printCanValuesLog("Speed Error", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[3][1]){/*0x1FFE=Init*/
+                printCanValuesLog("Speed Init", specificID, hexValue, hexValueStatus);
+            }else{/*Speed values*/
+                printCanValuesLog("Speed values", specificID, hexValue, hexValueStatus);
+                // E.g., Convert 0x123 to 291.
+                int SpeedValues = SignalCANInfo.convertHexValueToDecimalValue(hexValue);
+                printCanValuesLog("SpeedValues", specificID, hexValue, hexValueStatus);
+                Log.d(TAG, "SpeedValues: " + SpeedValues + "km/h\n---------\n");
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[13]){/* Battery level SOC */
+            if(hexValue == this.hexValueTable[4][0]){/*0xFF=Error*/
+                printCanValuesLog("Battery Error", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[4][1]){/*0xFE=Init*/
+                printCanValuesLog("Battery Init", specificID, hexValue, hexValueStatus);
+            }else{/*Battery values*/
+                printCanValuesLog("Battery values", specificID, hexValue, hexValueStatus);
+                // E.g., Convert 0x123 to 291.
+                int batteryValues = SignalCANInfo.convertHexValueToDecimalValue(hexValue);
+                printCanValuesLog("batteryValues", specificID, hexValue, hexValueStatus);
+                Log.d(TAG, "batteryValues: " + batteryValues + "%\n---------\n");
+            }
+        }
+
+        if(specificID == this.canIdSignalsTable[14]){/* Driving mileage */
+            if(hexValue == this.hexValueTable[5][0]){/*0x3FF=Error*/
+                printCanValuesLog("drivingMileage Error", specificID, hexValue, hexValueStatus);
+            }else if(hexValue == this.hexValueTable[5][1]){/*0x3FE=Init*/
+                printCanValuesLog("drivingMileage Init", specificID, hexValue, hexValueStatus);
+            }else{/*Driving mileage values*/
+                printCanValuesLog("drivingMileage values", specificID, hexValue, hexValueStatus);
+                // E.g., Convert 0x123 to 291.
+                int drivingMileageValues = SignalCANInfo.convertHexValueToDecimalValue(hexValue);
+                printCanValuesLog("drivingMileageValues", specificID, hexValue, hexValueStatus);
+                Log.d(TAG, "drivingMileageValues: " + drivingMileageValues + "km\n---------\n");
+            }
+        }
+        printCanValuesLog("Other CANs", specificID, hexValue, hexValueStatus);
+    }
+
+    private void printCanValuesLog(String canStatus, String specificID, String hexValue, String hexValueStatus){
+        Log.d(TAG, "printCanValuesLog: " + canStatus);
+        Log.d(TAG, "dawi_specificID: " + specificID);
+        Log.d(TAG, "dawi_HexValue: " + hexValue);
+        Log.d(TAG, "dawi_Status: " + hexValueStatus + "\n---------\n");
+    }
+
+    private void startSendingSignalsToQt() {
+        Log.d(TAG, "startSendingSignalsToQt");
+        //sendingSignals = true;
+        /*遠光燈信號*/
+        String AAA = "ZGW_RHighBeamPower_St";
+        String BBB = "Opened";  // Opened, Closed
+
+        new Thread(() -> {
+            for(int i=0; i<=10; i++){
+                if (AAA!=null && BBB!=null && !AAA.isEmpty() && !BBB.isEmpty()) {
+                    Log.d(TAG, "dawi_java_count: " + i);
+                    Log.d(TAG, "dawi_java_signals: " + AAA);
+                    sendToQt(AAA);
+                    //sendToQtSignalChange(AAA, BBB);
+                }
+            }
+            /* while (sendingSignals) {
+                if (AAA != null && BBB != null && !AAA.isEmpty() && !BBB.isEmpty()) {
+                    sendToQtSignalChange(AAA, BBB);
+                }
+                try {
+                    // Adjust the interval between sending signals
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            } */
+        }).start();
+    }
+
+    private void stopSendingSignalsToQt() {
+        Log.d(TAG, "stopSendingSignals");
+        sendingSignals = false;
+    }
+
+    public void initDriverService(){
+        Log.d(TAG, "initDriverService");
+        Intent intent = new Intent();
+        intent.setPackage("com.fxc.ev.driverprofile");
+        intent.setAction("DriverProfileService");
+        bindService(intent, connDriverService, Context.BIND_AUTO_CREATE);
+    }
+
+    public void disConnDriverService(){
+        Log.d(TAG, "=====disConnDriverService=====");
+        unbindService(connDriverService);
+    }
+
+    // 用於處理駕駛員服務的連接和斷開
+    private ServiceConnection connDriverService = new ServiceConnection() {
+        // 負責建立與駕駛員服務的連接，處理與服務的通信，並註冊回調以接收數據變化的通知。
+
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            // iBinder 是一個用於通信的介面。
+            Log.d(TAG, "DriverService onServiceConnected");
+
+            // 通過 iDriverAidlInterface 調用 getDriverData 方法，獲取駕駛員數據
+            iDriverAidlInterface = IDriverAidlInterface.Stub.asInterface(iBinder);
+
+            try {
+                String speedLimit = iDriverAidlInterface.getDriverData("SpeedLimiting");
+                String passengerAirbagSwitch = iDriverAidlInterface.getDriverData("PACOS");/*Passenger Airbag Cut Off Switch */
+                setSpeedLimit(speedLimit);
+                setPACOS(passengerAirbagSwitch);
+            } catch (RemoteException e) {
+                e.printStackTrace();
+            }
+
+            try {
+                Log.d(TAG, "DriverService registerCallback");
+                // 註冊駕駛員數據回調，以接收駕駛員服務的數據變化
+                iDriverAidlInterface.registerCallback(driverCallback);
+            } catch (RemoteException e) {
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            iDriverAidlInterface = null;
+            Log.i(TAG, "DriverService Disconnected");
+        }
+    };
+
+    // 註冊廣播接收器
+    private void regBrocastReceiver() {
+        Log.d(TAG, "regBrocastReceiver");
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(DRIVER_MODE_CHANGE_ACTION);
+        filter.addAction(DPAD_KEYEVENT);
+        filter.addAction(KNEO_FACE_UNLOCK);
+        filter.addAction(TRIP_MODE_CHANGE_ACTION);
+        filter.addAction(TRIP_MODE_RESETVALUE_ACTION);
+        filter.addAction(EV_RADIO_PROGRAMS);
+        filter.addAction(SPEED_LIMIT_ACTION);
+        filter.addAction(CHARGE_MODE_CHANGE);
+        registerReceiver(mBroadcastReceiver, filter);
+    }
+
+    // 廣播接收器
+    public class serviceStartBroadcastReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            // 處理廣播數據
+            Log.i(TAG, "onReceive::intent.Action = "+ intent.getAction());
+            if (intent.getAction().equals(DRIVER_MODE_CHANGE_ACTION)) {
+                /*launcher廣播通知變更行車模式*/
+                String modeStr = intent.getStringExtra("mode");
+                Log.i(TAG, "modeStr: "+ modeStr);
+                //sendToQtDriverMode(modeStr);
+            } else if (intent.getAction().equals(DPAD_KEYEVENT)) {
+                String keycodeStr = intent.getStringExtra("KeyCode");
+                Log.i(TAG, "keycodeStr: "+ keycodeStr);
+                //sendToQtKeyCode(keycodeStr);
+            } else if (intent.getAction().equals(KNEO_FACE_UNLOCK)) {
+                String userName = intent.getStringExtra("userName");
+                Log.i(TAG, "NKEO userName: "+ userName);
+                //sendToQtKneoUserID(userName);
+            } else if (intent.getAction().equals(TRIP_MODE_CHANGE_ACTION)) {
+                setTripInfo();
+            } else if (intent.getAction().equals(TRIP_MODE_RESETVALUE_ACTION)) {
+                String resetItem = intent.getStringExtra("resetItem");
+                Log.i(TAG, "Trip resetItem: "+ resetItem);
+                resetTripValue(resetItem);
+            } else if (intent.getAction().equals(EV_RADIO_PROGRAMS)) {
+                /*模擬接收到電台廣播，傳送數據到qml*/
+                if(TEST_DEBUG){
+                    boolean updateList = true;
+                    int currRadioIdx = 3;
+                    String currRadioName = "TEST RADIONAME";
+                    String currRadioFreq = "TEST RADIOFREQ";
+                    String arrayRadio = "";
+                    ArrayList<String> radioList = new ArrayList();
+                    for (int i = 0;i < 10;i++) {
+                        radioList.add("title_"+i+"&"+"info_"+i);
+                    }
+                    if (radioList.size() != 0) {
+                        String string = radioList.toString();
+                        arrayRadio = string.substring(1,string.length()-1);
+                        //sendRadioInfo(currRadioIdx,currRadioName,currRadioFreq,updateList,arrayRadio);
+                    }
+                } else {
+                    Bundle bundle = intent.getBundleExtra("radio_programs");
+                    if (bundle != null) {
+                        boolean updateList = bundle.getBoolean("program_update");/*是否要更新電台列表*/
+                        int currRadioIdx = bundle.getInt("radio_index");/*當前播放的電台在電台列表中的index*/
+                        ProgramSelector currSelector = bundle.getParcelable("radio_selector");/*當前播放的電台(含微調控制)*/
+                        String currRadioName = "";
+                        String currRadioFreq = "";
+                        String arrayRadio = "";
+                        if(currSelector != null) {
+                            currRadioName = new Program(currSelector,ProgramSelectorExt.getDisplayName(
+                                    currSelector, ProgramSelectorExt.NAME_NO_PROGRAM_TYPE_FALLBACK)).getName();/*當前播放的電台名稱*/
+                            currRadioFreq = ProgramSelectorExt.getDisplayName(
+                                    currSelector, ProgramSelectorExt.NAME_NO_MODULATION);/*當前播放的電台頻率*/
+                        }
+                        ArrayList<String> radioList = new ArrayList();
+                        ArrayList<RadioManager.ProgramInfo> programInfos = bundle.getParcelableArrayList("radio_programs");/*電台列表*/
+                        if(programInfos.size() != 0) {
+                            for (RadioManager.ProgramInfo programInfo:programInfos) {
+                                ProgramSelector sel = programInfo.getSelector();
+                                RadioMetadata metadata = ProgramInfoExt.getMetadata(programInfo);
+                                String programTitle = metadata.getString(RadioMetadata.METADATA_KEY_RDS_PS);
+                                String programModulation = ProgramSelectorExt.getDisplayName(sel,ProgramSelectorExt.NAME_NO_MODULATION);
+                                Log.i(TAG, "radio Title: "+ programTitle);
+                                Log.i(TAG, "radio Modulation: "+ programModulation);
+                                radioList.add(programTitle + "&" + programModulation);
+                            }
+                        }
+                        Log.i(TAG, "radioList = "+ radioList.toString());
+                        if (radioList.size() != 0) {
+                            String string = radioList.toString();
+                            arrayRadio = string.substring(1,string.length()-1);
+                            //sendRadioInfo(currRadioIdx,currRadioName,currRadioFreq,updateList,arrayRadio);
+                        }
+                    }
+                }
+            } else if (intent.getAction().equals(SPEED_LIMIT_ACTION)) {
+                /*檢查限速開關*/
+            } else if (intent.getAction().equals(CHARGE_MODE_CHANGE)) {
+                String statusStr = intent.getStringExtra("status");
+                Log.i(TAG, "charge mode statusStr: "+ statusStr);
+                //sendChargeModeStatus(statusStr);
+            }
+        }
+    }
+
+    private void resetTripValue(String resetItem) {
+        Log.i(TAG, "resetTripValue");
+        if (resetItem.equals("TripA")) {
+            tripAReset = true;
+        } else if (resetItem.equals("TripB")) {
+            tripBReset = true;
+        }
+        setTripInfo();
+    }
+
+    // 用於初始化 Trip Info
+    private void setTripInfo(){
+        Log.i(TAG, "setTripInfo");
+
+        String value = SystemPropUtil.getprop("persist.fxc.ev.tripui","");
+        Log.i(TAG, "TripInfo value: " + value);
+
+        // 初始化 TripInfo 並向 Qt 應用程序發送
+        if (!TextUtils.isEmpty(value)) {
+            String[] array = value.split(",");
+            String odometer = "288,511";
+            ArrayList<String> TripInfo = new ArrayList<>();
+
+            for (int i = 0; i < array.length; i++) {
+                Log.i(TAG, "trip i = " + i);
+                if (!TextUtils.isEmpty(array[i])) {
+                    String name = array[i];
+                    String km = "0";
+                    String h = "0";
+                    String min = "0";
+                    String kwh = "0";
+
+                    if (i == 0 && currentReset == false) {
+                        /*Current*/
+                        km = "2010";
+                        h = "2";
+                        min = "46";
+                        kwh = "500";
+                    } else if (i == 1 && lastChargeReset == false) {
+                        /*Last Charge*/
+                        km = "5555";
+                        h = "8";
+                        min = "20";
+                        kwh = "5000";
+                    } else if (i == 2 && tripAReset == false) {
+                        /*Trip A*/
+                        km = "555";
+                        h = "4";
+                        min = "10";
+                        kwh = "600";
+                    } else if (i == 3 && tripBReset == false) {
+                        /*Trip B*/
+                        km = "5550";
+                        h = "41";
+                        min = "40";
+                        kwh = "6660";
+                    }
+
+                    String tripCard = name +","+ km +","+ h +","+ min +","+ kwh;
+                    Log.i(TAG, "tripCard = " + tripCard);
+
+                    TripInfo.add(tripCard);
+                    if (TripInfo.size() == 2)
+                        break;
+                }
+            }
+
+            if (TripInfo.size() == 1) {
+                Log.i(TAG, "sendTripCards size = 1");
+                //sendTripCards(odometer,TripInfo.get(0),"");
+            } else if (TripInfo.size() == 2) {
+                Log.i(TAG, "sendTripCards size = 2");
+                //sendTripCards(odometer,TripInfo.get(0),TripInfo.get(1));
+            } else {
+                Log.i(TAG, "sendTripCards Error");
+            }
+        }
+    }
+
+    private void setSpeedLimit(String speedLimitValue){
+        Log.i(TAG, "speedLimitValue = "+ speedLimitValue);
+        if (TextUtils.isEmpty(speedLimitValue)) {
+            Log.i(TAG, "Speed Limit status is Close");
+            //sendLimitSpeed(false,0);
+        } else {
+            Log.i(TAG, "Speed Limit status is Open");
+            //sendLimitSpeed(true,Integer.valueOf(speedLimitValue));
+        }
+    }
+
+    private void setPACOS(String passengerAirbagSwitch){
+        if (passengerAirbagSwitch.equals("1")) {
+            /*副駕安全氣囊功能正常啟用*/
+            //sendPacosStatus(true);
+        } else if (passengerAirbagSwitch.equals("0")) {
+            /*副駕安全氣囊功能關閉*/
+            //sendPacosStatus(false);
+        } else {
+            Log.i(TAG, "PACOS not set value");
+        }
+    }
+
+    //*** For play music part ***//
+    private void initMediaPlaybackHandler(){
+        Log.i(TAG, "initMediaPlaybackHandler");
+        mediaPlaybackHandler = new MediaPlaybackHandler();
+        mediaPlaybackHandler.setMediaPlaybackCallback(this);
+        mediaPlaybackHandler.initializeMediaBrowser(this);
+    }
+
+    @Override
+    public void onUpdateUI(String songName, String artistAndAlbum, long totalTime, Uri albumPhoto) {
+        String titleInfo = songName;
+        String[] parts = artistAndAlbum.split("-");
+        String artistInfo = parts[1];
+        String albumInfo = parts[0];
+        int seconds = (int)(totalTime/1000);
+        String durationInfo = String.valueOf(seconds);
+
+        if(titleInfo == null){
+            titleInfo = "";
+        }
+        if(artistInfo == null){
+            artistInfo = "unknow";
+        }
+        if(albumInfo == null){
+            albumInfo = "unknow";
+        }
+        if(!durationInfo.isEmpty()){
+            //sendToQtMediaInfo(titleInfo, artistInfo, albumInfo, durationInfo);
+        }
+
+        if (albumPhoto != null) {
+            try {
+                InputStream inputStream = getContentResolver().openInputStream(albumPhoto);
+                if (inputStream != null) {
+                    Bitmap bmp = BitmapFactory.decodeStream(inputStream);
+                    if (bmp != null) {
+                        String savePath = SavaImage(bmp);
+                        if (!TextUtils.isEmpty(savePath)) {
+                            //sendToQtThumb(savePath);
+                            Log.i(TAG, "PhotoPath: " + savePath);
+                        } else {
+                            Log.i(TAG, "Thumb bmp is null ");
+                        }
+                    }
+                    inputStream.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        Log.i(TAG, "java_titleSongName: " + titleInfo);
+        Log.i(TAG, "java_Artis: " + artistInfo);
+        Log.i(TAG, "java_Album: " + albumInfo);
+        Log.i(TAG, "java_TotalTime: " + durationInfo + " s");
+    }
+
+    @Override
+    public void onCurrentTimeChanged(long currentTime) {
+        int currentSongPosition = (int)(currentTime/1000);
+        if(currentSongPosition != 0){
+            //sendToQtMediaCurrPos(currentSongPosition);
+            Log.i(TAG, "java_music_currentTime: " + currentSongPosition + " s");
+        }
+    }
+
+    private String SavaImage(Bitmap bitmap){
+        String path = getCacheDir().getPath();
+        String filepath = path + "/thumb.jpg";
+        File file = new File(path);
+        FileOutputStream fileOutputStream = null;
+        if(!file.exists()){
+            file.mkdir();
+        }
+        try {
+            fileOutputStream = new FileOutputStream(filepath);
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fileOutputStream);
+            fileOutputStream.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "";
+        }
+        return filepath;
+    }
+
+}
