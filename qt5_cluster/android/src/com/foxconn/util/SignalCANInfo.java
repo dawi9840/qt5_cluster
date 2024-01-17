@@ -54,6 +54,39 @@ public class SignalCANInfo {
         return new String[] { signalInfo, canID, canData };
     }
 
+    /**
+     * Extracts the CAN-specific ID from the given signal ID.
+     *
+     * @param inputASingalId A string containing signal ID information separated by ', '.
+     * @return The CAN-specific ID extracted from the input signal ID.
+     */
+    private static String getCanSpecificCanId(String inputASingalId) {
+        String[] specificIDParts = inputASingalId.split(", ");
+        return specificIDParts[0];
+    }
+
+    /**
+     * Extracts the CAN-specific start bit from the given signal ID.
+     *
+     * @param inputASingalId A string containing signal ID information separated by ', '.
+     * @return The CAN-specific start bit extracted from the input signal ID.
+     */
+    private static String getCanSpecificStartBit(String inputASingalId) {
+        String[] specificIDParts = inputASingalId.split(", ");
+        return specificIDParts[1];
+    }
+
+    /**
+     * Extracts the CAN-specific length from the given signal ID.
+     *
+     * @param inputASingalId A string containing signal ID information separated by ', '.
+     * @return The CAN-specific length extracted from the input signal ID.
+     */
+    private static String getCanSpecificLength(String inputASingalId) {
+        String[] specificIDParts = inputASingalId.split(", ");
+        return specificIDParts[2];
+    }
+
     /***
      * Calculates the hexadecimal value based on specificID and signalData.
      *
