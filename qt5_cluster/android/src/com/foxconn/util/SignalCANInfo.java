@@ -60,7 +60,7 @@ public class SignalCANInfo {
      * @param inputASingalId A string containing signal ID information separated by ', '.
      * @return The CAN-specific ID extracted from the input signal ID.
      */
-    private static String getCanSpecificCanId(String inputASingalId) {
+    public static String getCanSpecificCanId(String inputASingalId) {
         String[] specificIDParts = inputASingalId.split(", ");
         return specificIDParts[0];
     }
@@ -71,7 +71,7 @@ public class SignalCANInfo {
      * @param inputASingalId A string containing signal ID information separated by ', '.
      * @return The CAN-specific start bit extracted from the input signal ID.
      */
-    private static String getCanSpecificStartBit(String inputASingalId) {
+    public static String getCanSpecificStartBit(String inputASingalId) {
         String[] specificIDParts = inputASingalId.split(", ");
         return specificIDParts[1];
     }
@@ -82,7 +82,7 @@ public class SignalCANInfo {
      * @param inputASingalId A string containing signal ID information separated by ', '.
      * @return The CAN-specific length extracted from the input signal ID.
      */
-    private static String getCanSpecificLength(String inputASingalId) {
+    public static String getCanSpecificLength(String inputASingalId) {
         String[] specificIDParts = inputASingalId.split(", ");
         return specificIDParts[2];
     }
