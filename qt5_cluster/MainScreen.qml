@@ -68,7 +68,7 @@ Item {
 
     property double oldTimeStemp:0
     property int oldSpeed: 0
-    property int defaultIndex: 0 //預設Type頁面 index
+    property int defaultIndex: 0 //預設Type頁面 index 0
 
     property color switch_offColor : "gray"
     property color switch_OnColor : "white"
