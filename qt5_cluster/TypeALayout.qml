@@ -23,7 +23,7 @@ Item {
     property bool switchDoor_RR: false
     property bool switchEngine: false
     property bool switchTrunk: false
-    property bool displayMusicInfo:true//-----------------false
+    property bool displayMusicInfo:false//-----------------false;true
     property string musicTrackName:"Photograph"
     property string musicArtistName:"紅髮艾德"
     property alias musicDuration: rightMusic.progressbarmaximumValue
