@@ -23,6 +23,10 @@ Item {
     property int defaultIndex:0
     property int radioListIndex:0
 
+    /* root 定義一個變量，用於跟蹤是否接收到音樂封面_dawi add */
+    property bool musicCoverReceived: false
+
+
     Image {
         anchors.fill: parent
         source: backgroundImage
@@ -368,6 +372,9 @@ Item {
             console.log("thumbPath : " + thumbPath);
             var filepath = "file://"+thumbPath;
             console.log("filepath : " + filepath);
+
+            root.musicCoverReceived = true; /* 設置接收到音樂封面的標誌_dawi add */
+
             root.imgMusicAlbum = "";
             root.imgMusicAlbum = filepath;
 
@@ -379,6 +386,7 @@ Item {
     Connections {
         target: qtAndroidService
         function onMediaCurrPos(currPos) {
+            console.log("收到 Music Service 播放進度: " + currPos + " s");
             root.progressbarValue = currPos;
         }
     }
@@ -388,8 +396,20 @@ Item {
         target: qtAndroidService
         function onCleanMedia(){
             console.log("onCleanMedia")
+
+            /* 檢查是否接收到音樂封面，如果沒有則顯示預設圖片 dawi add*/
+            if (!root.musicCoverReceived) {
+                root.imgMusicAlbum = "qrc:/assets/img_music_default.png";
+            }
+
+            /* 重置接收到音樂封面的標誌 dawi add*/
+            root.musicCoverReceived = false;
+
+            /* 其他清理操作... */
             root.displayMusicInfo = false;
-            root.imgMusicAlbum = "qrc:/assets/img_music_default.png";
+
+            /*root.displayMusicInfo = false; // 其他清理操作
+            root.imgMusicAlbum = "qrc:/assets/img_music_default.png";*/
         }
     }
 
@@ -461,4 +481,3 @@ Item {
 //    }
 
 }
-
