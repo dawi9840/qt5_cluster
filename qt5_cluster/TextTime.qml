@@ -13,7 +13,7 @@ Item {
         id: text_temp
         x: 0
         y: 0
-        width: 80
+        width: 100//80
         height: 36
         color: "#ffffff"
         text: "25°C"
